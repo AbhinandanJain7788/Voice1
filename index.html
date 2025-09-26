@@ -204,7 +204,7 @@
   </style>
 </head>
 <body>
-  <h1>🎙️ Voice Bot (mobile-ready)</h1>
+  <h1>🎙️ Voice Bot </h1>
 
   <div class="card">
     <div style="margin-bottom:12px;">
@@ -251,19 +251,52 @@
     let audioPrimed = false;            // whether we primed audio on user gesture
 
     // Helper: load voices and pick male english
-    function loadVoicesAndPick() {
-      voices = speechSynthesis.getVoices() || [];
-      console.log('Available voices:', voices.map(v => `${v.name} [${v.lang}]`));
-      // choose male English voice heuristics
-      chosenMaleVoice = voices.find(v => {
-        const n = v.name.toLowerCase();
-        return v.lang && v.lang.startsWith('en') &&
-          (n.includes('male') || n.includes('ravi') || n.includes('david') || n.includes('alex') || n.includes('john') || n.includes('matt') || n.includes('mark') || n.includes('mike') || n.includes('male'));
-      }) || voices.find(v => v.lang && v.lang.startsWith('en')) || null;
-      console.log('Chosen voice:', chosenMaleVoice ? chosenMaleVoice.name : 'none (will use default)');
-    }
-    speechSynthesis.onvoiceschanged = loadVoicesAndPick;
-    loadVoicesAndPick();
+    // function loadVoicesAndPick() {
+    //   voices = speechSynthesis.getVoices() || [];
+    //   console.log('Available voices:', voices.map(v => `${v.name} [${v.lang}]`));
+    //   // choose male English voice heuristics
+    //   chosenMaleVoice = voices.find(v => {
+    //     const n = v.name.toLowerCase();
+    //     return v.lang && v.lang.startsWith('en') &&
+    //       (n.includes('male') || n.includes('ravi') || n.includes('david') || n.includes('alex') || n.includes('john') || n.includes('matt') || n.includes('mark') || n.includes('mike') || n.includes('male'));
+    //   }) || voices.find(v => v.lang && v.lang.startsWith('en')) || null;
+    //   console.log('Chosen voice:', chosenMaleVoice ? chosenMaleVoice.name : 'none (will use default)');
+    // }
+    // speechSynthesis.onvoiceschanged = loadVoicesAndPick;
+    // loadVoicesAndPick();
+
+    function pickMaleVoice() {
+  voices = speechSynthesis.getVoices() || [];
+
+  // Try to pick a clear male English voice
+  chosenMaleVoice =
+    voices.find(v =>
+      v.lang && v.lang.startsWith('en') &&
+      (v.name.toLowerCase().includes('male') ||
+       v.name.toLowerCase().includes('ravi') ||
+       v.name.toLowerCase().includes('david') ||
+       v.name.toLowerCase().includes('john') ||
+       v.name.toLowerCase().includes('alex') ||
+       v.name.toLowerCase().includes('mark') ||
+       v.name.toLowerCase().includes('mike'))
+    )
+    // if not found, try *any* English voice
+    || voices.find(v => v.lang && v.lang.startsWith('en'))
+    // fallback: just the browser default
+    || null;
+
+  console.log(
+    'Available voices:',
+    voices.map(v => v.name),
+    '\nChosen male default:',
+    chosenMaleVoice ? chosenMaleVoice.name : 'none (browser default)'
+  );
+}
+
+// Load on page ready
+speechSynthesis.onvoiceschanged = pickMaleVoice;
+pickMaleVoice();
+
 
     // Try to prime audio: resume AudioContext and speak a silent utterance (volume=0).
     async function primeAudioIfNeeded() {
