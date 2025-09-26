@@ -1,4 +1,4 @@
-
+<!-- 
 
 <!DOCTYPE html>
 <html lang="en">
@@ -180,4 +180,280 @@
     });
   </script>
 </body>
+</html> -->
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Abhinandan - Voice Bot (mobile-friendly)</title>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background:#f5f7fb; color:#222; padding:28px; text-align:center; }
+    .card { background:#fff; border-radius:12px; padding:18px; margin:12px auto; max-width:720px; box-shadow:0 6px 18px rgba(0,0,0,0.06); text-align:left; }
+    h1 { margin:0 0 16px; color:#333; }
+    button { padding:12px 18px; border-radius:10px; border:0; background:#2f80ed; color:#fff; font-size:15px; cursor:pointer; }
+    button:disabled { background:#bbb; cursor:not-allowed; }
+    .row{display:flex;gap:10px;align-items:center;}
+    input[type="text"]{flex:1;padding:10px;border-radius:8px;border:1px solid #ddd;}
+    .hidden{display:none;}
+    p { margin:8px 0; }
+    small{color:#666}
+  </style>
+</head>
+<body>
+  <h1>🎙️ Voice Bot (mobile-ready)</h1>
+
+  <div class="card">
+    <div style="margin-bottom:12px;">
+      <button id="startBtn">Start Talking / Start</button>
+      <button id="playReplyBtn" class="hidden">🔊 Play Reply</button>
+    </div>
+
+    <div id="fallbackInput" class="hidden">
+      <div class="row">
+        <input id="textInput" type="text" placeholder="Type your question (fallback for Safari iOS)" />
+        <button id="sendTextBtn">Send</button>
+      </div>
+      <small>If your mobile browser doesn't support speech recognition (e.g. Safari iOS), type and press Send.</small>
+    </div>
+
+    <div style="margin-top:16px;">
+      <div class="box">
+        <h3 style="margin:4px 0;color:#2f80ed">You said:</h3>
+        <p id="userText">...</p>
+      </div>
+
+      <div class="box" style="margin-top:12px;">
+        <h3 style="margin:4px 0;color:#2f80ed">Bot replied:</h3>
+        <p id="botText">...</p>
+      </div>
+    </div>
+
+    <p style="margin-top:10px;"><small>Note: On some mobile browsers you might need to tap "Play Reply" if automatic playback is blocked.</small></p>
+  </div>
+
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const playReplyBtn = document.getElementById('playReplyBtn');
+    const userTextEl = document.getElementById('userText');
+    const botTextEl = document.getElementById('botText');
+    const fallbackInput = document.getElementById('fallbackInput');
+    const textInput = document.getElementById('textInput');
+    const sendTextBtn = document.getElementById('sendTextBtn');
+
+    let recognition = null;
+    let latestReply = '';               // store last reply for manual play
+    let voices = [];
+    let chosenMaleVoice = null;
+    let audioPrimed = false;            // whether we primed audio on user gesture
+
+    // Helper: load voices and pick male english
+    function loadVoicesAndPick() {
+      voices = speechSynthesis.getVoices() || [];
+      console.log('Available voices:', voices.map(v => `${v.name} [${v.lang}]`));
+      // choose male English voice heuristics
+      chosenMaleVoice = voices.find(v => {
+        const n = v.name.toLowerCase();
+        return v.lang && v.lang.startsWith('en') &&
+          (n.includes('male') || n.includes('ravi') || n.includes('david') || n.includes('alex') || n.includes('john') || n.includes('matt') || n.includes('mark') || n.includes('mike') || n.includes('male'));
+      }) || voices.find(v => v.lang && v.lang.startsWith('en')) || null;
+      console.log('Chosen voice:', chosenMaleVoice ? chosenMaleVoice.name : 'none (will use default)');
+    }
+    speechSynthesis.onvoiceschanged = loadVoicesAndPick;
+    loadVoicesAndPick();
+
+    // Try to prime audio: resume AudioContext and speak a silent utterance (volume=0).
+    async function primeAudioIfNeeded() {
+      if (audioPrimed) return;
+      // Try resume AudioContext (helps Chrome mobile)
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          if (ctx.state === 'suspended') {
+            await ctx.resume().catch(() => {});
+          }
+        }
+      } catch (e) { console.warn('AudioContext resume failed:', e); }
+
+      // Use a short zero-volume utterance to unlock speech on mobile
+      try {
+        const primeUtter = new SpeechSynthesisUtterance('unlocking audio');
+        primeUtter.volume = 0; // silent
+        // set a short rate/ pitch
+        primeUtter.rate = 1;
+        primeUtter.pitch = 1;
+        // pick a voice if available
+        if (chosenMaleVoice) primeUtter.voice = chosenMaleVoice;
+        // mark primed when it ends
+        primeUtter.onend = () => { audioPrimed = true; console.log('Audio primed'); };
+        speechSynthesis.speak(primeUtter);
+        // set fallback flag after a short timeout (in case onend never fires)
+        setTimeout(() => { audioPrimed = true; }, 700);
+      } catch (e) {
+        console.warn('Priming utterance failed', e);
+        audioPrimed = true; // continue anyway
+      }
+    }
+
+    // The function that actually speaks text (used both auto and manual)
+    function speakReply(text) {
+      if (!('speechSynthesis' in window)) {
+        alert('Speech synthesis not supported in this browser.');
+        return;
+      }
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.rate = 1;
+      utter.pitch = 1;
+      // choose voice if available
+      if (chosenMaleVoice) utter.voice = chosenMaleVoice;
+      // in some browsers, setting volume to 1 ensures audible playback
+      utter.volume = 1;
+      utter.onstart = () => { console.log('speaking started'); playReplyBtn.classList.add('hidden'); };
+      utter.onend = () => { console.log('speaking finished'); startBtn.disabled = false; startBtn.innerText = 'Start Talking'; };
+      // ensure any previous speech is canceled
+      speechSynthesis.cancel();
+      // small delay often helps on mobile
+      setTimeout(() => speechSynthesis.speak(utter), 80);
+    }
+
+    // Core: call backend with question and handle response
+    async function callBackendAndReply(question) {
+      startBtn.disabled = true;
+      startBtn.innerText = 'Processing...';
+      userTextEl.innerText = question;
+      botTextEl.innerText = 'Thinking...';
+      try {
+        const res = await fetch('https://n8n-jikm.onrender.com/webhook-test/voice-agent', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ question })
+        });
+        const text = await res.text();
+        let reply;
+        try { reply = JSON.parse(text).reply || text; } catch { reply = text; }
+        if (!reply || reply.trim()==='') reply = 'Sorry, I didn’t get any response.';
+        latestReply = reply;
+        botTextEl.innerText = reply;
+
+        // try to speak automatically (only works if audio is primed/unlocked)
+        if (!audioPrimed) {
+          // if not primed, show "Play Reply" so user can explicitly play (works on Safari)
+          console.log('Audio not primed — will attempt priming then speak.');
+          await primeAudioIfNeeded();
+        }
+
+        // Attempt to speak. If mobile browser still blocks, user can press Play Reply button.
+        try {
+          speakReply(latestReply);
+          // show play button just in case auto-play still blocked on some devices
+          setTimeout(() => {
+            if (!speechSynthesis.speaking) {
+              // show manual play button if not speaking
+              playReplyBtn.classList.remove('hidden');
+            } else {
+              playReplyBtn.classList.add('hidden');
+            }
+          }, 500);
+        } catch (e) {
+          console.warn('Auto speak failed, showing manual play button.', e);
+          playReplyBtn.classList.remove('hidden');
+        }
+      } catch (err) {
+        console.error('Backend error', err);
+        botTextEl.innerText = 'Error contacting server.';
+        startBtn.disabled = false;
+        startBtn.innerText = 'Start Talking';
+      }
+    }
+
+    // Setup: speech recognition if available
+    const hasRecognition = ('webkitSpeechRecognition' in window);
+    if (!hasRecognition) {
+      // show fallback texting UI for iOS Safari
+      fallbackInput.classList.remove('hidden');
+      console.log('SpeechRecognition not supported — showing text fallback.');
+    } else {
+      // initialize recognition
+      try {
+        const rec = new webkitSpeechRecognition();
+        rec.lang = 'en-US';
+        rec.continuous = false;
+        rec.interimResults = false;
+        rec.onstart = () => { startBtn.disabled = true; startBtn.innerText = 'Listening...'; };
+        rec.onend = () => { startBtn.disabled = false; startBtn.innerText = 'Start Talking'; };
+        rec.onresult = (ev) => {
+          const q = ev.results[0][0].transcript;
+          // send to backend
+          callBackendAndReply(q);
+        };
+        recognition = rec;
+      } catch (e) {
+        console.warn('Recognition init failed', e);
+      }
+    }
+
+    // Start button handler: MUST be a user gesture -> prime audio & start recognition/fallback
+    startBtn.addEventListener('click', async () => {
+      // prime audio right away (user gesture)
+      await primeAudioIfNeeded();
+      // ensure voices loaded
+      loadVoicesAndPick();
+      // If recognition available, start it (this is the user gesture)
+      if (recognition) {
+        try {
+          recognition.start();
+        } catch (e) {
+          console.warn('Recognition start failed', e);
+          // fallback: maybe recognition was blocked — ask to type
+          fallbackInput.classList.remove('hidden');
+        }
+      } else {
+        // no recognition: show fallback input and focus
+        fallbackInput.classList.remove('hidden');
+        textInput.focus();
+      }
+    });
+
+    // Play reply (manual) — user gesture ensures playback on iOS
+    playReplyBtn.addEventListener('click', async () => {
+      if (!latestReply) return;
+      await primeAudioIfNeeded(); // ensure primed
+      speakReply(latestReply);
+    });
+
+    // Text fallback send button
+    sendTextBtn.addEventListener('click', () => {
+      const q = textInput.value && textInput.value.trim();
+      if (!q) return alert('Please type something.');
+      callBackendAndReply(q);
+    });
+
+    // utility to load voices if not loaded yet (ensure function exists in this scope)
+    function loadVoicesAndPick() {
+      voices = speechSynthesis.getVoices() || [];
+      // If voices list is empty here, rely on onvoiceschanged to repopulate
+      if (!voices.length) {
+        console.log('Voices empty now; will wait for onvoiceschanged.');
+      }
+      // pick male voice heuristics (same as above)
+      chosenMaleVoice = voices.find(v => {
+        const n = v.name.toLowerCase();
+        return v.lang && v.lang.startsWith('en') &&
+          (n.includes('male') || n.includes('ravi') || n.includes('david') || n.includes('alex') || n.includes('john') || n.includes('matt') || n.includes('mark') || n.includes('mike') || n.includes('male'));
+      }) || voices.find(v => v.lang && v.lang.startsWith('en')) || null;
+      console.log('Voices reloaded:', voices.map(v => v.name), 'chosen:', chosenMaleVoice ? chosenMaleVoice.name : 'none');
+    }
+
+    // make sure text fallback is usable by hitting Enter
+    textInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendTextBtn.click();
+    });
+
+  </script>
+</body>
 </html>
+
