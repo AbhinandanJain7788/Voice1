@@ -327,7 +327,7 @@
       userTextEl.innerText = question;
       botTextEl.innerText = 'Thinking...';
       try {
-        const res = await fetch('https://n8n-jikm.onrender.com/webhook-test/voice-agent', {
+        const res = await fetch('https://n8n-jikm.onrender.com/webhook/voice-agent', {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ question })
